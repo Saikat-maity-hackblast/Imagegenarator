@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ludo Game Application with Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://cdn.jsdelivr.net/npm/@fontsource/inter@3.3.1/400.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+        }
+
+        /* Styles for the Ludo board */
+        .ludo-board-container {
+            width: 600px;
+            margin: 0 auto;
+        }
+        @media (max-width: 700px) {
+            .ludo-board-container {
+                width: 98vw;
+            }
+        }
+        .disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        .dice {
+            width: 56px;
+            height: 56px;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            background-color: #f7fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            border: 2px solid #cbd5e1;
+            transition: box-shadow 0.12s;
+        }
+        .dice.active {
+            border: 3px solid #38bdf8;
+            box-shadow: 0 0 10px #38bdf888;
+        }
+        .ludo-slot {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            min-width: 90px;
+            min-height: 70px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Hide scrollbars for PDF export */
+        ::-webkit-scrollbar {display:none;}
+        /* Ludo board grid squares for pawns */
+        .pawn-spot {
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            margin: 2px;
+            display: inline-block;
+            border: 1px solid white;
+        }
+        .p-red { background-color: #dc2626;}
+        .p-yellow { background-color: #facc15;}
+        .p-green { background-color: #22c55e;}
+        .p-blue { background-color: #2563eb;}
+        /* Hide number input arrows for turn order breaking */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0;}
+        input[type=number] { -moz-appearance: textfield;}
+    </style>
+</head>
+<body class="bg-gray-50 pb-8">
+    <div id="app" class="max-w-6xl mx-auto py-6 px-3">
+        <!-- Header -->
+        <div class="flex flex-col items-center mb-8">
+            <div class="text-3xl font-bold text-gray-800 tracking-wide mb-1">Ludo Game Application</div>
+            <div class="text-lg text-gray-600 mb-5">With Proper Admin Panel &amp; User Management</div>
+        </div>
+
+        <!-- Authentication and Account Info -->
+        <div class="bg-white rounded-lg shadow-md p-6 max-w-xl mx-auto mb-8">
+            <div id="auth-panel"></div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        <div id="admin-panel" style="display:none;">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
+                <div class="text-xl font-semibold text-blue-800 flex items-center mb-4">
+                    <i class="fa-solid fa-user-shield mr-2"></i> Admin Dashboard
+                </div>
+                <!-- Tabs -->
+                <div class="flex space-x-3 mb-5">
+                    <button class="tab-btn-admin bg-blue-200 text-blue-900 font-semibold px-4 py-1 rounded" data-tab="challenges">Challenges</button>
+                    <button class="tab-btn-admin bg-blue-100 text-blue-700 px-4 py-1 rounded" data-tab="usermanage">Users</button>
+                    <button class="tab-btn-admin bg-blue-100 text-blue-700 px-4 py-1 rounded" data-tab="games">Games</button>
+                </div>
+                <!-- Tab Contents -->
+                <div id="admin-challenges-tab"></div>
+                <div id="admin-users-tab" style="display:none;"></div>
+                <div id="admin-games-tab" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- User Dashboard -->
+        <div id="user-panel" style="display:none;">
+            <div class="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
+                <div class="text-xl font-semibold text-green-800 flex items-center mb-4">
+                    <i class="fa-solid fa-user mr-2"></i> Player Dashboard
+                </div>
+                <!-- Challenges List & Game Join/Play -->
+                <div id="user-challenges-tab"></div>
+                <div id="active-game-tab"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Game Room -->
+    <div id="game-modal" class="fixed inset-0 z-50 bg-black bg-opacity-30 flex items-center justify-center" style="display:none;">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl relative max-h-[98vh] overflow-y-auto" id="game-modal-content">
+            <button onclick="closeGameModal()" class="absolute top-3 right-3 bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center text-lg text-gray-800 hover:bg-red-200">
+                <i class="fa fa-times"></i>
+            </button>
+            <div id="game-instance"></div>
+        </div>
+    </div>
+
+    <!-- SVG: High-Resolution Ludo Board -->
+    <template id="ludo-board-svg-template">
+        <div class="ludo-board-container flex flex-col items-center py-3">
+            <svg viewBox="0 0 600 600" width="100%" height="100%" style="max-width:600px;" class="mb-3">
+                <!-- Board outline -->
+                <rect x="5" y="5" width="590" height="590" rx="22" fill="#ffe34a" stroke="#eab308" stroke-width="5"/>
+
+                <!-- Color quadrants -->
+                <rect x="30" y="30" width="210" height="210" fill="#dc2626" stroke="#fff" stroke-width="2"/>
+                <rect x="360" y="30" width="210" height="210" fill="#22c55e" stroke="#fff" stroke-width="2"/>
+                <rect x="360" y="360" width="210" height="210" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+                <rect x="30" y="360" width="210" height="210" fill="#facc15" stroke="#fff" stroke-width="2"/>
+
+                <!-- Center white cross -->
+                <rect x="240" y="240" width="120" height="120" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+                <rect x="120" y="240" width="120" height="120" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+                <rect x="240" y="120" width="120" height="120" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+                <rect x="360" y="240" width="120" height="120" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+                <rect x="240" y="360" width="120" height="120" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+
+                <!-- Home triangles -->
+                <polygon points="240,240 360,240 300,300" fill="#fff"/>
+                <polygon points="240,360 240,240 300,300" fill="#fff"/>
+                <polygon points="360,360 360,240 300,300" fill="#fff"/>
+                <polygon points="360,240 240,240 300,300" fill="#fff"/>
+
+                <!-- Center colored arrows (to home path) -->
+                <polygon points="300,300 260,240 340,240" fill="#dc2626" opacity="0.8"/>
+                <polygon points="300,300 360,260 360,340" fill="#22c55e" opacity="0.8"/>
+                <polygon points="300,300 260,360 340,360" fill="#2563eb" opacity="0.8"/>
+                <polygon points="300,300 240,260 240,340" fill="#facc15" opacity="0.8"/>
+
+                <!-- Red house symbol -->
+                <g>
+                    <rect x="65" y="65" width="140" height="140" rx="18" fill="#fff" stroke="#e11d48" stroke-width="4"/>
+                    <g>
+                        <circle cx="104" cy="104" r="20" fill="#dc2626"/><circle cx="104" cy="176" r="20" fill="#dc2626"/>
+                        <circle cx="176" cy="104" r="20" fill="#dc2626"/><circle cx="176" cy="176" r="20" fill="#dc2626"/>
+                    </g>
+                </g>
+
+                <!-- Yellow house symbol -->
+                <g>
+                    <rect x="65" y="395" width="140" height="140" rx="18" fill="#fff" stroke="#eab308" stroke-width="4"/>
+                    <g>
+                        <circle cx="104" cy="465" r="20" fill="#facc15"/><circle cx="104" cy="537" r="20" fill="#facc15"/>
+                        <circle cx="176" cy="465" r="20" fill="#facc15"/><circle cx="176" cy="537" r="20" fill="#facc15"/>
+                    </g>
+                </g>
+
+                <!-- Green house symbol -->
+                <g>
+                    <rect x="395" y="65" width="140" height="140" rx="18" fill="#fff" stroke="#16a34a" stroke-width="4"/>
+                    <g>
+                        <circle cx="426" cy="104" r="20" fill="#22c55e"/><circle cx="498" cy="104" r="20" fill="#22c55e"/>
+                        <circle cx="426" cy="176" r="20" fill="#22c55e"/><circle cx="498" cy="176" r="20" fill="#22c55e"/>
+                    </g>
+                </g>
+
+                <!-- Blue house symbol -->
+                <g>
+                    <rect x="395" y="395" width="140" height="140" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4"/>
+                    <g>
+                        <circle cx="426" cy="465" r="20" fill="#2563eb"/><circle cx="426" cy="537" r="20" fill="#2563eb"/>
+                        <circle cx="498" cy="465" r="20" fill="#2563eb"/><circle cx="498" cy="537" r="20" fill="#2563eb"/>
+                    </g>
+                </g>
+            </svg>
+        </div>
+    </template>
+
+    <!-- Font Awesome needs this -->
+    <script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/js/all.min.js"></script>
+
+    <script>
+    // --- USER & SESSION MANAGEMENT ---
+    const LS_USERS_KEY = 'ludo_app_users_v2';
+    const LS_CHALLENGES_KEY = 'ludo_app_challenges_v2';
+    const LS_GAMES_KEY = 'ludo_app_games_v2';
+    const LS_SESSION_KEY = 'ludo_app_session_v2';
+
+    // -- ROLE: admin, user
+    // -- Admin always exists: username "anubish", password "admin123"
+    function getUsers() {
+        let u = JSON.parse(localStorage.getItem(LS_USERS_KEY)||'[]');
+        if (!u.some(us => us.username==='anubish' && us.role==='admin')) {
+            u.unshift({username: 'anubish', password: 'admin123', role: 'admin', created: new Date().toISOString()});
+            localStorage.setItem(LS_USERS_KEY, JSON.stringify(u));
+        }
+        return u;
+    }
+    function setUsers(users) {
+        localStorage.setItem(LS_USERS_KEY, JSON.stringify(users));
+    }
+    function getSession() {
+        return JSON.parse(localStorage.getItem(LS_SESSION_KEY) || 'null');
+    }
+    function setSession(user) {
+        localStorage.setItem(LS_SESSION_KEY, JSON.stringify(user));
+    }
+    function clearSession() {
+        localStorage.removeItem(LS_SESSION_KEY);
+    }
+    function getUsername() {
+        let ses = getSession();
+        return ses ? ses.username : null;
+    }
+    function getRole() {
+        let ses = getSession();
+        return ses ? ses.role : null;
+    }
+    // --- CHALLENGE / GAME DATA ---
+    function getChallenges() {
+        return JSON.parse(localStorage.getItem(LS_CHALLENGES_KEY)||'[]');
+    }
+    function setChallenges(arr) {
+        localStorage.setItem(LS_CHALLENGES_KEY, JSON.stringify(arr));
+    }
+    function getGames() {
+        return JSON.parse(localStorage.getItem(LS_GAMES_KEY)||'[]');
+    }
+    function setGames(arr) {
+        localStorage.setItem(LS_GAMES_KEY, JSON.stringify(arr));
+    }
+    // Return challenge by id
+    function getChallenge(id) {
+        let c = getChallenges();
+        return c.find(t => t.id===id);
+    }
+    function getGame(id) {
+        let g = getGames();
+        return g.find(gm => gm.id===id);
+    }
+    // --- RENDER AUTH PANEL (login/register/logout) ---
+    function renderAuthPanel() {
+        let user = getSession();
+        let html = '';
+        if (user) {
+            html += `<div class="flex flex-col space-y-2 items-center">
+                <div class="text-lg text-gray-700 flex items-center gap-2">
+                    <i class="fa fa-user-circle text-blue-400"></i>
+                    <strong>${user.username}</strong>
+                    <span class="text-xs px-2 rounded-full bg-gray-200 ml-2">${user.role==='admin' ? 'ADMIN' : 'USER'}</span>
+                </div>
+                <button onclick="logout()" class="bg-gray-200 hover:bg-red-200 text-gray-700 font-semibold px-4 py-1 rounded shadow-sm w-40 mt-2">
+                    <i class="fa fa-sign-out"></i> Logout
+                </button>
+            </div>`;
+        } else {
+            html += `
+                <div>
+                    <div class="font-bold mb-1">Login</div>
+                    <form onsubmit="return login(event)" class="mb-3 space-y-2">
+                        <input id="login-username" type="text" autocomplete="username" required placeholder="Username" class="block border rounded px-3 py-2 w-full" />
+                        <input id="login-password" type="password" autocomplete="current-password" required placeholder="Password" class="block border rounded px-3 py-2 w-full" />
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white px-4 py-1 rounded w-full font-bold">Login</button>
+                    </form>
+                </div>
+                <div class="border-t pt-4 mt-2">
+                    <div class="font-bold mb-1">Register (Players Only)</div>
+                    <form onsubmit="return register(event)">
+                        <input id="register-username" type="text" required minlength="3" maxlength="20" autocomplete="new-username" placeholder="Username" class="block border rounded px-3 py-2 w-full mb-2" />
+                        <input id="register-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Password (min 6 chars)" class="block border rounded px-3 py-2 w-full mb-2" />
+                        <button type="submit" class="bg-green-500 text-white px-4 py-1 rounded w-full font-bold">Register</button>
+                    </form>
+                </div>
+                <div class="text-xs text-gray-500 mt-3 pt-1 border-t">
+                    <b>Admin Login:</b> Username: <b>anubish</b> | Password: <b>admin123</b> <br>
+                    Only admin can create challenges and manage users.
+                </div>
+            `;
+        }
+        document.getElementById('auth-panel').innerHTML = html;
+        renderPanels();
+    }
+
+    function renderPanels() {
+        let user = getSession();
+        document.getElementById('admin-panel').style.display = (user&&user.role==='admin')?'':'none';
+        document.getElementById('user-panel').style.display = (user&&user.role==='user')?'':'none';
+        if (user && user.role==='admin') renderAdminPanel();
+        if (user && user.role==='user') renderUserPanel();
+    }
+    function logout() {
+        clearSession();
+        closeGameModal();
+        renderAuthPanel();
+    }
+    // --- LOGIN/REGISTER LOGIC ---
+    function login(e) {
+        e.preventDefault();
+        let u = document.getElementById('login-username').value.trim();
+        let p = document.getElementById('login-password').value.trim();
+        let users = getUsers();
+        let user = users.find(x => x.username===u && x.password===p);
+        if (user) {
+            setSession({username: user.username, role: user.role});
+            renderAuthPanel();
+        } else {
+            alert('Invalid username or password.');
+        }
+        return false;
+    }
+    function register(e) {
+        e.preventDefault();
+        let username = document.getElementById('register-username').value.trim();
+        let password = document.getElementById('register-password').value.trim();
+        if (username==='anubish') {
+            alert('Registration of "anubish" is reserved for admin.');
+            return false;
+        }
+        if (getUsers().find(u=>u.username===username)) {
+            alert('Username already exists!');
+            return false;
+        }
+        if (password.length<6) {
+            alert('Password should be at least 6 characters.');
+            return false;
+        }
+        let user = {username, password, role:'user', created: new Date().toISOString()};
+        let users = getUsers();
+        users.push(user);
+        setUsers(users);
+        alert('Registration successful! Please log in.');
+        renderAuthPanel();
+        return false;
+    }
+
+    // --- ADMIN PANEL ---
+    function renderAdminPanel() {
+        // Display default tab: challenges
+        renderAdminChallengesTab();
+        setupAdminTabs();
+    }
+    function setupAdminTabs() {
+        document.querySelectorAll('.tab-btn-admin').forEach(btn => {
+            btn.onclick = function() {
+                document.querySelectorAll('.tab-btn-admin').forEach(b=>b.classList.remove('bg-blue-200','text-blue-900','font-semibold'));
+                btn.classList.add('bg-blue-200','text-blue-900','font-semibold');
+                document.getElementById('admin-challenges-tab').style.display = btn.dataset.tab==='challenges'?'':'none';
+                document.getElementById('admin-users-tab').style.display = btn.dataset.tab==='usermanage'?'':'none';
+                document.getElementById('admin-games-tab').style.display = btn.dataset.tab==='games'?'':'none';
+                if (btn.dataset.tab==='challenges') renderAdminChallengesTab();
+                else if (btn.dataset.tab==='usermanage') renderAdminUsersTab();
+                else if (btn.dataset.tab==='games') renderAdminGamesTab();
+            }
+        });
+    }
+    // Admin - Challenges Tab
+    function renderAdminChallengesTab() {
+        let html = `
+        <div class="mb-3">
+            <details open class="mb-4">
+                <summary class="cursor-pointer mb-2 flex items-center text-base"><span class="font-semibold">Create New Challenge</span></summary>
+                <form onsubmit="return createChallenge(event)" class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-blue-100 p-3 pr-6 rounded shadow">
+                    <div>
+                        <label class="block text-sm">Name:</label>
+                        <input name="ch-name" type="text" required maxlength="28" placeholder="Challenge Name" class="border rounded px-2 py-1 w-full" />
+                    </div>
+                    <div>
+                        <label class="block text-sm">Game Mode:</label>
+                        <select name="ch-mode" class="border rounded px-2 py-1 w-full">
+                            <option value="1v1">1 vs 1</option>
+                            <option value="2v2">2 vs 2</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm">Password:</label>
+                        <input name="ch-pass" type="text" required minlength="2" maxlength="16" placeholder="Password" class="border rounded px-2 py-1 w-full" />
+                    </div>
+                    <div class="col-span-3 flex justify-end pt-2">
+                        <button class="bg-blue-700 hover:bg-blue-900 text-white py-1 px-4 rounded font-bold"><i class="fa fa-plus"></i> Create</button>
+                    </div>
+                </form>
+            </details>
+            <div>
+                <span class="font-semibold text-base mb-2">Active Challenges</span>
+                <div class="overflow-x-auto mt-2">
+                <table class="min-w-full text-xs border">
+                    <thead>
+                        <tr class="bg-blue-100 text-gray-600">
+                            <th class="py-1 px-2 border w-36">Name</th>
+                            <th class="py-1 px-2 border w-20">Mode</th>
+                            <th class="py-1 px-2 border w-24">Joined/Max</th>
+                            <th class="py-1 px-2 border w-28">Password</th>
+                            <th class="py-1 px-2 border w-24">Status</th>
+                            <th class="py-1 px-2 border w-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${getChallenges().map(renderChallengeRowAdmin).join('')}
+                    </tbody>
+                </table>
+                </div>
+                <div class="text-xs text-gray-500 mt-1">Only unstarted challenges can be deleted. Ongoing/completed games are managed elsewhere.</div>
+            </div>
+        </div>
+        `;
+        document.getElementById('admin-challenges-tab').innerHTML = html;
+    }
+    function renderChallengeRowAdmin(ch) {
+        let maxPlayers = ch.mode==='1v1' ? 2 : 4, joined = ch.players.length;
+        let disabled = joined>0 ? 'disabled opacity-50 pointer-events-none' : '';
+        return `<tr>
+            <td class="border px-2 py-1">${ch.name}</td>
+            <td class="border px-2">${ch.mode}</td>
+            <td class="border px-2">${joined}/${maxPlayers}</td>
+            <td class="border px-2">${ch.password}</td>
+            <td class="border px-2">${ch.status}</td>
+            <td class="border px-2">
+                <button onclick="deleteChallenge('${ch.id}')" title="Delete" class="text-red-700 hover:text-red-900" ${disabled}><i class="fa fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }
+    function createChallenge(e) {
+        e.preventDefault();
+        let name = e.target['ch-name'].value.trim();
+        let mode = e.target['ch-mode'].value;
+        let password = e.target['ch-pass'].value.trim();
+        if (getChallenges().some(x=>x.name===name)) {
+            alert('Challenge name already exists!');
+            return false;
+        }
+        let id = 'ch_'+Math.random().toString(36).slice(2,10)+'_'+Date.now();
+        let challenge = {
+            id, name, mode,
+            password,
+            created: new Date().toISOString(),
+            status: 'waiting',
+            players: [] //{username, color, joinedAt}
+        };
+        let arr = getChallenges();
+        arr.push(challenge);
+        setChallenges(arr);
+        renderAdminChallengesTab();
+        return false;
+    }
+    function deleteChallenge(id) {
+        if (!confirm('Delete this challenge?')) return;
+        let c = getChallenges();
+        setChallenges(c.filter(x => x.id!==id));
+        renderAdminChallengesTab();
+    }
+
+    // Admin - Users Tab
+    function renderAdminUsersTab() {
+        let users = getUsers().filter(u=>u.username!=='anubish');
+        let html = `
+        <div>
+            <div class="mb-3"><span class="font-semibold">Registered Users</span></div>
+            <table class="min-w-full border text-xs mb-1">
+                <thead>
+                    <tr class="bg-green-100 text-gray-700">
+                        <th class="py-1 px-2 border w-28">Username</th>
+                        <th class="py-1 px-2 border w-24">Role</th>
+                        <th class="py-1 px-2 border w-44">Created</th>
+                        <th class="py-1 px-2 border w-10"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${users.map(u => `
+                        <tr>
+                            <td class="border px-2 py-1">${u.username}</td>
+                            <td class="border px-2">${u.role}</td>
+                            <td class="border px-2">${u.created ? u.created.split('T')[0] : '-'}</td>
+                            <td class="border px-2">
+                                <button onclick="deleteUser('${u.username}')" class="text-red-900 hover:text-red-700" title="Delete user">
+                                    <i class="fa fa-user-minus"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <div class="text-xs text-gray-500">You cannot edit admin account from here.</div>
+        </div>
+        `;
+        document.getElementById('admin-users-tab').innerHTML = html;
+    }
+    function deleteUser(username) {
+        if (!confirm(`Delete user '${username}'? This cannot be undone.`)) return;
+        setUsers(getUsers().filter(u=>u.username!==username));
+        // Remove user from all challenges
+        let chs = getChallenges();
+        chs.forEach(ch=>{
+            ch.players = ch.players.filter(p=>p.username!==username);
+        });
+        setChallenges(chs);
+        renderAdminUsersTab();
+        renderAdminChallengesTab();
+    }
+    // Admin - Games Tab
+    function renderAdminGamesTab() {
+        let allGames = getGames();
+        let html = `<div>
+            <div class="mb-3"><span class="font-semibold">Game Monitoring/Control</span></div>
+            <table class="min-w-full border text-xs">
+                <thead>
+                    <tr class="bg-blue-100 text-gray-600">
+                        <th class="px-2 py-1 border w-36">Challenge</th>
+                        <th class="px-2 py-1 border w-20">Mode</th>
+                        <th class="px-2 py-1 border w-32">Status</th>
+                        <th class="px-2 py-1 border w-44">Participants</th>
+                        <th class="px-2 py-1 border w-32">Started</th>
+                        <th class="px-2 py-1 border w-32">Winner</th>
+                        <th class="px-2 py-1 border w-2"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${allGames.map(g => {
+                        return `<tr>
+                            <td class="border px-2">${g.challengeName}</td>
+                            <td class="border px-2">${g.mode}</td>
+                            <td class="border px-2">${g.status}</td>
+                            <td class="border px-2">${g.players.map(p=>p.username +' ('+capitalize(p.color)+')').join(', ')}</td>
+                            <td class="border px-2">${g.startedAt?g.startedAt.split('T')[0]:'-'}</td>
+                            <td class="border px-2">${g.winner?g.winner:'-'}</td>
+                            <td class="border px-2"><button onclick="viewGame('${g.id}')" class="text-blue-700"><i class="fa fa-eye"></i></button></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            <div class="text-xs text-gray-500 mt-1">You may view any game as admin but not play.</div>
+        </div>`;
+        document.getElementById('admin-games-tab').innerHTML = html;
+    }
+    function viewGame(gameId) {
+        showGame(gameId, true); // read-only
+    }
+    // --- USER PANEL ---
+    function renderUserPanel() {
+        // Show challenges list, join option, active game (if any)
+        let activeGameId = window.localStorage.getItem('ludo_activeGame_'+getUsername());
+        let html = '';
+        if (activeGameId) {
+            html += `<div class="mb-3">
+                <div class="text-green-700 font-semibold mb-2">Active Game</div>
+                <button onclick="resumeGame('${activeGameId}')" class="bg-green-500 hover:bg-green-700 text-white font-bold px-4 py-1 rounded"><i class="fa fa-chess-board"></i> Resume Game</button>
+            </div>`;
+        }
+        let chs = getChallenges();
+        html += `<div>
+            <div class="mb-2 font-semibold">Open Challenges</div>
+            <div class="overflow-x-auto">
+            <table class="min-w-full text-xs border">
+                <thead>
+                    <tr class="bg-green-100 text-gray-700">
+                        <th class="py-1 px-2 border w-36">Name</th>
+                        <th class="py-1 px-2 border w-20">Mode</th>
+                        <th class="py-1 px-2 border w-24">Joined/Max</th>
+                        <th class="py-1 px-2 border w-2"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${chs.filter(x=>x.status==='waiting').map(renderChallengeRowUser).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>`;
+        document.getElementById('user-challenges-tab').innerHTML = html;
+    }
+    function renderChallengeRowUser(ch) {
+        let maxPlayers = ch.mode==='1v1' ? 2 : 4, joined = ch.players.length;
+        let already = ch.players.some(p=>p.username===getUsername());
+        let disabled = (joined>=maxPlayers || already)?'disabled opacity-50 pointer-events-none':'';
+        return `<tr>
+            <td class="border px-2 py-1">${ch.name}</td>
+            <td class="border px-2">${ch.mode}</td>
+            <td class="border px-2">${joined}/${maxPlayers}</td>
+            <td class="border px-2">
+                <button class="bg-green-500 hover:bg-green-700 text-white py-1 px-3 text-xs rounded font-semibold ${disabled}" 
+                    onclick="promptJoinChallenge('${ch.id}')">
+                    <i class="fa fa-sign-in"></i> Join</button>
+            </td>
+        </tr>`;
+    }
+    function promptJoinChallenge(chId) {
+        let pw = prompt('Enter challenge password');
+        if (!pw) return;
+        joinChallenge(chId, pw);
+    }
+    function joinChallenge(chId, password) {
+        let chs = getChallenges();
+        let ch = chs.find(c=>c.id===chId);
+        if (!ch) { alert('Challenge not found.'); return; }
+        if (ch.password!==password) { alert('Invalid password.'); return;}
+        let username = getUsername();
+        if (ch.players.some(p=>p.username===username)) {
+            alert('You have already joined this challenge.');
+            return;
+        }
+        let maxPlayers = ch.mode==='1v1'?2:4;
+        if (ch.players.length>=maxPlayers) {
+            alert('No more slots available in this challenge.');
+            return;
+        }
+        // Assign color
+        let usedColors = ch.players.map(p=>p.color);
+        let colorPool = ch.mode==='1v1'?['red','yellow']:['red','yellow','green','blue'];
+        let availColor = colorPool.find(c=>!usedColors.includes(c));
+        if (!availColor) { alert('No available color slot.'); return;}
+        ch.players.push({username, color: availColor, joinedAt:new Date().toISOString()});
+        if (ch.players.length===maxPlayers) ch.status='ready';
+        setChallenges(chs);
+        // If full, auto-start game and assign
+        if (ch.players.length===maxPlayers) {
+            startGameFromChallenge(ch);
+        }
+        renderUserPanel();
+    }
+    function startGameFromChallenge(ch) {
+        let gid = 'gm_'+Math.random().toString(36).slice(2,10)+'_'+Date.now();
+        // Each player {username, color, turnOrder: (to be decided)}
+        let game = {
+            id: gid,
+            challengeId: ch.id,
+            challengeName: ch.name,
+            mode: ch.mode,
+            players: ch.players.map(p=>({...p})),
+            turnOrder: [], // determined after dice rolls
+            startedAt: null,
+            status: 'pending', // pending->active->completed
+            winner: null,
+            state: {}, // Game-state
+        };
+        let games = getGames();
+        games.push(game);
+        setGames(games);
+        // mark challenge as started
+        let chs = getChallenges();
+        let idx = chs.findIndex(x=>x.id===ch.id);
+        if (idx!==-1) chs[idx].status = 'started';
+        setChallenges(chs);
+        // Auto activate game for all users in challenge
+        for(let p of ch.players) {
+            window.localStorage.setItem('ludo_activeGame_'+p.username, gid);
+        }
+    }
+
+    // --- GAME PLAY LOGIC & MODAL ---
+    function resumeGame(gameId) {
+        showGame(gameId, false);
+    }
+    function showGame(gameId, readonly) {
+        let user = getSession();
+        let g = getGame(gameId);
+        if (!g) {alert('Game not found.'); return;}
+        // Get user color (for player)
+        let myColor = '';
+        if (user && user.role==='user') {
+            let me = g.players.find(p=>p.username===user.username);
+            if (me) myColor=me.color;
+        }
+        // Build board & game logic
+        let html = `
+        <div class="flex justify-between items-center border-b mb-1 pb-2">
+            <div>
+                <span class="text-lg font-bold">Ludo: </span>
+                <span class="font-mono">${g.challengeName}</span>
+                <span class="ml-2 px-2 bg-gray-200 rounded text-sm">${g.mode}</span>
+            </div>
+            <div>
+                <span class="text-xs text-gray-500">Status: <span class="text-blue-600">${g.status}</span></span>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-4 mt-4">
+            <div>
+                <div id="ludo-svg-board"></div>
+                <div id="ludo-board-players" class="mt-3 mb-4 grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+            </div>
+            <div class="w-[320px] flex flex-col space-y-3">
+                <div><span class="font-semibold">Players</span></div>
+                <div>
+                    ${g.players.map(p => `
+                        <div class="text-sm flex items-center mb-1 ${p.username===user?.username?'font-bold':''}">
+                            <span class="inline-block mr-2 rounded-full w-5 h-5" style="background-color:${colorMap[p.color]};"></span>
+                            ${p.username} <span class="ml-1 text-gray-500 px-2 rounded bg-gray-100">${capitalize(p.color)}</span>
+                            ${p.username===user?.username ? `<span class="ml-2 text-blue-700 text-xs">[You]</span>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                <div id="turn-seq-dice"></div>
+                <div>
+                    <div class="font-semibold">Action</div>
+                    <div id="dice-action"></div>
+                </div>
+                <div id="winner-info"></div>
+                <div>
+                    <button onclick="closeGameModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-1 rounded font-bold border">Close</button>
+                </div>
+            </div>
+        </div>
+        `;
+        document.getElementById('game-instance').innerHTML = html;
+        document.getElementById('game-modal').style.display = '';
+        // Render SVG board
+        let svgT = document.getElementById('ludo-board-svg-template').content.cloneNode(true);
+        document.getElementById('ludo-svg-board').appendChild(svgT);
+        renderGamePlayers(g, readonly);
+        // Turn order: Before game starts everyone must roll dice
+        if (g.status==='pending') renderTurnOrderDicePanel(g, readonly);
+        else if (g.status==='active' || g.status==='completed') renderDicePanel(g,readonly);
+        if (g.status==='completed') showWinnerInfo(g);
+    }
+    function closeGameModal() {
+        document.getElementById('game-modal').style.display='none';
+    }
+
+    function renderGamePlayers(game, readonly) {
+        // For demo, show pawn homes as colored dots
+        let html = '';
+        for (let color of (game.mode==='1v1'?['red','yellow']:['red','yellow','green','blue'])) {
+            let p = game.players.find(x=>x.color===color);
+            html += `<div class="ludo-slot">
+                <div class="font-bold" style="color:${colorMap[color]};">${capitalize(color)}</div>
+                <div>${p ? p.username : '-'}</div>
+                <div>${p ? pawnBlock(color, 4) : pawnBlock(color, 0)}</div>
+            </div>`;
+        }
+        document.getElementById('ludo-board-players').innerHTML = html;
+    }
+    function pawnBlock(color, n) {
+        let ps='';
+        for(let i=0;i<n;i++) ps += `<span class="pawn-spot p-${color}"></span>`;
+        return ps;
+    }
+    // --- TURN ORDER ROLL DICE PANEL (before real game) ---
+    function renderTurnOrderDicePanel(game, readonly) {
+        // Save dice rolls in game.state.turnOrderRolls
+        let state = game.state || {};
+        if (!state.turnOrderRolls) state.turnOrderRolls = [];
+        let user = getSession();
+        let myRoll = state.turnOrderRolls.find(x=>x.username===user?.username);
+        let allRolled = state.turnOrderRolls.length===game.players.length;
+        let html = `
+            <div class="mb-3 font-semibold">Pre-game: Determine turn sequence</div>
+            <div class="text-xs text-gray-700 mb-2">All players must roll the dice. The player with the highest roll starts first. (If tie, highest assigned order by color: Red, Yellow, Green, Blue)</div>
+            <table class="min-w-full text-xs border mb-2">
+                <thead>
+                    <tr class="bg-gray-100 text-gray-600"><th class="py-1 px-2 border">Player</th><th class="py-1 px-2 border">Color</th><th class="py-1 px-2 border">Initial Dice</th></tr>
+                </thead>
+                <tbody>
+                    ${game.players.map(p=>{
+                        let r=state.turnOrderRolls.find(x=>x.username===p.username);
+                        return `<tr>
+                            <td class="border px-2 py-1">${p.username}</td>
+                            <td class="border px-2"><span class="px-2 rounded-full" style="background:${colorMap[p.color]};color:white">${capitalize(p.color)}</span></td>
+                            <td class="border px-2">${r?r.roll:'-'}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            <div class="mb-1">
+                ${
+                    (user && user.role==='user' && !readonly && !myRoll)
+                    ? `<button onclick="initialTurnOrderRoll('${game.id}')" class="dice bg-blue-100 active">
+                        <i class="fa-solid fa-dice"></i> Roll Dice
+                        </button>`
+                    : (myRoll? `<div class="text-green-700">You rolled: <b>${myRoll.roll}</b></div>` : '' )
+                }
+            </div>
+        `;
+        if (allRolled) {
+            // Sort order: by roll DESC, on tie by color order: red>yellow>green>blue
+            let tieOrder = ['red','yellow','green','blue'];
+            let order = [...state.turnOrderRolls].sort((a,b)=>{
+                if (b.roll!==a.roll) return b.roll-a.roll;
+                // On tie, use color order
+                let cA = game.players.find(x=>x.username===a.username).color;
+                let cB = game.players.find(x=>x.username===b.username).color;
+                return tieOrder.indexOf(cA) - tieOrder.indexOf(cB);
+            });
+            html+=`<div class="mb-2 text-sm text-blue-900 font-bold">Turn Order: ${order.map((x,i)=>`${i+1}. ${x.username} (${capitalize(game.players.find(p=>p.username===x.username).color)})`).join(' | ')}</div>`;
+            if (!readonly && user && user.role==='user' && game.status==='pending' && getUsername()===order[0].username) {
+                html+=`<button onclick="startGame('${game.id}')" class="bg-green-600 text-white px-4 py-1 mt-2 rounded font-semibold"><i class="fa fa-play"></i> Start Game</button>`;
+            } else if (!readonly) {
+                html+= `<div class="text-xs mt-1 text-gray-500">Waiting for the first player to start the game...</div>`;
+            }
+        }
+        document.getElementById('turn-seq-dice').innerHTML = html;
+        // Save state
+        game.state = state;
+        persistGameState(game);
+    }
+    function initialTurnOrderRoll(gameId) {
+        let game = getGame(gameId);
+        if (!game) return;
+        let user = getSession();
+        if (!user) return;
+        let state = game.state||{};
+        if (!state.turnOrderRolls) state.turnOrderRolls=[];
+        if (state.turnOrderRolls.some(x=>x.username===user.username)) return;
+        let roll = Math.floor(Math.random()*6)+1;
+        state.turnOrderRolls.push({username:user.username, roll});
+        game.state = state;
+        persistGameState(game);
+        showGame(gameId,false);
+    }
+    function startGame(gameId) {
+        let game = getGame(gameId);
+        if (!game) return;
+        // lock in turn order
+        let tieOrder = ['red','yellow','green','blue'];
+        let sorted = [...game.state.turnOrderRolls].sort((a,b)=>{
+            if (b.roll!==a.roll) return b.roll-a.roll;
+            let cA = game.players.find(x=>x.username===a.username).color;
+            let cB = game.players.find(x=>x.username===b.username).color;
+            return tieOrder.indexOf(cA)-tieOrder.indexOf(cB);
+        });
+        game.turnOrder = sorted.map(x=>x.username);
+        game.startedAt = new Date().toISOString();
+        game.status='active';
+        // Initialize pawn positions: 4 for each player at home
+        let state = game.state || {};
+        state.pawns = {};
+        for (let p of game.players) {
+            state.pawns[p.username] = [0,0,0,0];
+        }
+        state.currentTurnIdx = 0;
+        state.currentDice = null;
+        state.moveInProgress = false;
+        state.movesThisTurn =[];
+        game.state = state;
+        persistGameState(game);
+        showGame(gameId, false);
+    }
+    // --- MAIN GAME LOGIC ---
+    function renderDicePanel(game, readonly) {
+        let user = getSession();
+        let state = game.state || {};
+        // If completed
+        if (game.status==='completed') {
+            document.getElementById('dice-action').innerHTML='';
+            return;
+        }
+        // Only current player may roll dice, and only if all players are present
+        let turnUsername = game.turnOrder && game.turnOrder[state.currentTurnIdx];
+        let canRoll = (user && !readonly && user.username===turnUsername && state.currentDice===null);
+        let canMove = (user && !readonly && user.username===turnUsername && state.currentDice!==null);
+        let html = `<div class="text-xs mb-2">Current Turn: <b>${capitalize(game.players.find(p=>p.username===turnUsername)?.color||'-')}</b> (${turnUsername})</div>`;
+        if (canRoll) {
+            html += `<button onclick="gameRollDice('${game.id}')" class="dice bg-yellow-100 active">
+                <i class="fa-solid fa-dice"></i> Roll Dice
+            </button>`;
+        } else {
+            html += `<div class="dice ${state.currentDice!==null?'bg-green-200':'bg-gray-100'}">${state.currentDice!==null?'<i class="fa-solid fa-dice"></i> '+state.currentDice:'Waiting...'}</div>`;
+        }
+        document.getElementById('dice-action').innerHTML = html;
+        showCurrentTurnHighlight(game, state.currentTurnIdx);
+        // Winner?
+        if (game.status==='completed') showWinnerInfo(game);
+    }
+    function gameRollDice(gameId) {
+        let game = getGame(gameId);
+        if (!game) return;
+        let state = game.state||{};
+        if (state.currentDice!==null) return; // already rolled
+        let roll = Math.floor(Math.random()*6)+1;
+        state.currentDice = roll;
+        game.state = state;
+        persistGameState(game);
+        showGame(gameId, false);
+    }
+    function showCurrentTurnHighlight(game, idx) {
+        // Optionally highlight current turn in board/slot
+        let colors = game.mode==='1v1'?['red','yellow']:['red','yellow','green','blue'];
+        let color = game.players.find(x=>x.username===game.turnOrder[idx])?.color;
+        document.querySelectorAll('.ludo-slot').forEach(el=>{
+            el.classList.remove('ring-2','ring-blue-400');
+            if (el.querySelector('div').innerText.toLowerCase()===capitalize(color)) {
+                el.classList.add('ring-2','ring-blue-400');
+            }
+        });
+    }
+    // --- WINNER ---
+    function showWinnerInfo(game) {
+        document.getElementById('winner-info').innerHTML = `
+            <div class="text-lg font-bold text-green-700 mt-3">
+                Winner: ${winnerText(game)} 
+            </div>
+        `;
+    }
+    function winnerText(game) {
+        if (game.mode==='1v1') {
+            let [w, l] = [game.winner, game.players.filter(x=>x.username!==game.winner)[0]?.username];
+            return `<span class="text-blue-700">${w}</span> win the match against <span class="text-red-800">${l}</span>`;
+        } else if (game.mode==='2v2') {
+            // 2v2: team win announce
+            let winCol = game.players.find(x=>x.username===game.winner).color;
+            let winTeam = (winCol==='red'||winCol==='yellow') ? ['red','yellow'] : ['green','blue'];
+            let loseTeam = (winCol==='red'||winCol==='yellow') ? ['green','blue'] : ['red','yellow'];
+            let winners = game.players.filter(p=>winTeam.includes(p.color)).map(p=>p.username).join(' + ');
+            let losers = game.players.filter(p=>loseTeam.includes(p.color)).map(p=>p.username).join(' + ');
+            return `<span class="text-blue-700">${winners}</span> win the match against <span class="text-red-800">${losers}</span>`;
+        }
+        return '-';
+    }
+    // -- Game State Update Utilities --
+    function persistGameState(game) {
+        let games = getGames();
+        let idx = games.findIndex(g=>g.id===game.id);
+        if (idx!==-1) games[idx]=game;
+        else games.push(game);
+        setGames(games);
+    }
+    // --- UTILITIES ---
+    function capitalize(s) {return s? (s[0].toUpperCase()+s.slice(1)) :'' }
+    let colorMap = {red:'#dc2626',yellow:'#facc15',green:'#22c55e',blue:'#2563eb'};
+    // --- INITIALIZE ---
+    window.onload = () => {
+        renderAuthPanel();
+    };
+    window.renderAuthPanel = renderAuthPanel; // Allow form actions
+    // globalize necessary for inline form actions
+    window.login = login;
+    window.register = register;
+    window.logout = logout;
+    window.deleteChallenge = deleteChallenge;
+    window.deleteUser = deleteUser;
+    window.createChallenge = createChallenge;
+    window.promptJoinChallenge = promptJoinChallenge;
+    window.resumeGame = resumeGame;
+    window.initialTurnOrderRoll = initialTurnOrderRoll;
+    window.startGame = startGame;
+    window.gameRollDice = gameRollDice;
+    window.showGame = showGame;
+    window.closeGameModal = closeGameModal;
+    window.viewGame = viewGame;
+    </script>
+</body>
+</html>
+
